@@ -38,19 +38,29 @@ private:
     // TODO: Internal helper functions
 
     // TODO: Internal member variables
+    Disk *disk;
+    uint32_t blocks;
+    uint32_t inode_blocks;
+    uint32_t inodes;
+    size_t old_blocks[200];
+    int valid_num;
+    int bitmap[200];
 
 public:
     static void debugInodeBlock(Disk *disk, int inode_block_num);
     static void readIndirectBlock(Disk *disk, int block_num);
     static void debug(Disk *disk);
     static bool format(Disk *disk);
+    // static bool remove_inode(Disk *disk, int inumber);
 
     bool mount(Disk *disk);
-
+    ssize_t load_node(size_t inumber, Inode *node);
+    bool save_node(size_t inumber, Inode *node);
     ssize_t create();
     bool    remove(size_t inumber);
     ssize_t stat(size_t inumber);
 
     ssize_t read(size_t inumber, char *data, size_t length, size_t offset);
     ssize_t write(size_t inumber, char *data, size_t length, size_t offset);
+    int get_free_block();
 };
