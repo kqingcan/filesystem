@@ -56,5 +56,5 @@ Inode 2:
 removed inode 0.
 removed inode 1.
 removed inode 2.
-144 disk block reads
+149 disk block reads
 246 disk block writes

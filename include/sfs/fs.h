@@ -56,6 +56,8 @@ public:
     bool mount(Disk *disk);
     ssize_t load_node(size_t inumber, Inode *node);
     bool save_node(size_t inumber, Inode *node);
+    void init_data_block(int block_num);
+    // void read_data_block(char *data,int block_num,int data_offset,int copy_length);
     ssize_t create();
     bool    remove(size_t inumber);
     ssize_t stat(size_t inumber);
