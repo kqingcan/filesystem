@@ -42,8 +42,6 @@ private:
     uint32_t blocks;
     uint32_t inode_blocks;
     uint32_t inodes;
-    size_t old_blocks[200];
-    int valid_num;
     int bitmap[200];
 
 public:
@@ -53,6 +51,7 @@ public:
     static bool format(Disk *disk);
     // static bool remove_inode(Disk *disk, int inumber);
 
+    void get_bitmap(Block block);
     bool mount(Disk *disk);
     ssize_t load_node(size_t inumber, Inode *node);
     bool save_node(size_t inumber, Inode *node);

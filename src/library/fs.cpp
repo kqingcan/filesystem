@@ -9,6 +9,7 @@
 #include <string.h>
 
 //get the details of inodes
+
 void FileSystem::debugInodeBlock(Disk *disk, int inode_block_num)
 {
     Block block;
@@ -44,6 +45,8 @@ void FileSystem::debugInodeBlock(Disk *disk, int inode_block_num)
     }
 }
 
+//get indirect data blocks
+
 void FileSystem::readIndirectBlock(Disk *disk, int block_num)
 {
     Block block;
@@ -64,10 +67,8 @@ void FileSystem::readIndirectBlock(Disk *disk, int block_num)
 void FileSystem::debug(Disk *disk)
 {
     Block block;
-
     // Read Superblock
     disk->read(0, block.Data);
-
     printf("SuperBlock:\n");
     if (block.Super.MagicNumber == MAGIC_NUMBER)
     {
@@ -81,9 +82,11 @@ void FileSystem::debug(Disk *disk)
     printf("    %u blocks\n", block.Super.Blocks);
     printf("    %u inode blocks\n", block.Super.InodeBlocks);
     printf("    %u inodes\n", block.Super.Inodes);
-    debugInodeBlock(disk, block.Super.InodeBlocks);
     // Read Inode blocks
+    debugInodeBlock(disk, block.Super.InodeBlocks);
 }
+
+// init a free block when use it
 
 void FileSystem::init_data_block(int block_num)
 {
@@ -108,9 +111,7 @@ bool FileSystem::format(Disk *disk)
     superBlock.Super.Blocks = size;
     superBlock.Super.InodeBlocks = (size % 10 == 0) ? size / 10 : size / 10 + 1;
     superBlock.Super.Inodes = INODES_PER_BLOCK * superBlock.Super.InodeBlocks;
-
     disk->write(0, (char *)&superBlock.Super);
-
     // Clear all other blocks
     for (int i = 0; i < size - 1; i++)
     {
@@ -118,8 +119,57 @@ bool FileSystem::format(Disk *disk)
         memset(temp.Data, 0, 4096);
         disk->write(i + 1, (char *)&temp);
     }
-
     return true;
+}
+
+//generate bitmap for filesystem
+
+void FileSystem::get_bitmap(Block block)
+{
+    int bitmap[block.Super.Blocks];
+    for (int i = 0; i < block.Super.Blocks; i++)
+    {
+        bitmap[i] = 0;
+    }
+    bitmap[0] = 1;
+    for (int i = 0; i < block.Super.InodeBlocks; i++)
+    {
+        bitmap[i + 1] = 1;
+        Block inodes_block;
+        disk->read(i + 1, inodes_block.Data);
+        for (int j = 0; j < INODES_PER_BLOCK; j++)
+        {
+            if (inodes_block.Inodes[j].Valid == 1)
+            {
+
+                for (int k = 0; k < POINTERS_PER_INODE; k++)
+                {
+                    int direct = inodes_block.Inodes[j].Direct[k];
+                    if (direct != 0)
+                    {
+                        bitmap[direct] = 1;
+                    }
+                }
+                if (inodes_block.Inodes[j].Indirect != 0)
+                {
+                    bitmap[inodes_block.Inodes[j].Indirect] = 1;
+                    Block indirect;
+                    this->disk->read(inodes_block.Inodes[j].Indirect, indirect.Data);
+                    for (int k = 0; k < POINTERS_PER_BLOCK; k++)
+                    {
+                        if (indirect.Pointers[k] != 0)
+                        {
+                            bitmap[indirect.Pointers[k]] = 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (int i = 0; i < block.Super.Blocks; i++)
+    {
+        this->bitmap[i] = bitmap[i];
+    }
 }
 
 // Mount file system -----------------------------------------------------------
@@ -140,7 +190,6 @@ bool FileSystem::mount(Disk *disk)
     {
         return false;
     }
-
     // Set device and mount
     disk->mount();
     // Copy metadata
@@ -149,55 +198,7 @@ bool FileSystem::mount(Disk *disk)
     this->blocks = blocks;
     this->inode_blocks = inode_blocks;
     this->inodes = inodes;
-    int bitmap[block.Super.Blocks];
-    for (int i = 0; i < block.Super.Blocks; i++)
-    {
-        bitmap[i] = 0;
-    }
-    this->valid_num = 0;
-    bitmap[0] = 1;
-    for (int i = 0; i < block.Super.InodeBlocks; i++)
-    {
-        bitmap[i + 1] = 1;
-        Block inodes_block;
-        disk->read(i + 1, inodes_block.Data);
-        for (int j = 0; j < INODES_PER_BLOCK; j++)
-        {
-            if (inodes_block.Inodes[j].Valid == 1)
-            {
-
-                for (int k = 0; k < POINTERS_PER_INODE; k++)
-                {
-                    int direct = inodes_block.Inodes[j].Direct[k];
-                    if (direct != 0)
-                    {
-                        this->old_blocks[this->valid_num] = direct;
-                        this->valid_num++;
-                        bitmap[direct] = 1;
-                    }
-                }
-                if (inodes_block.Inodes[j].Indirect != 0)
-                {
-                    bitmap[inodes_block.Inodes[j].Indirect] = 1;
-                    Block indirect;
-                    this->disk->read(inodes_block.Inodes[j].Indirect, indirect.Data);
-                    for (int k = 0; k < POINTERS_PER_BLOCK; k++)
-                    {
-                        if (indirect.Pointers[k] != 0)
-                        {
-                            this->old_blocks[this->valid_num] = indirect.Pointers[k];
-                            this->valid_num++;
-                            bitmap[indirect.Pointers[k]] = 1;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    for (int i = 0; i < block.Super.Blocks; i++)
-    {
-        this->bitmap[i] = bitmap[i];
-    }
+    this->get_bitmap(block);
     return true;
 }
 
@@ -226,6 +227,8 @@ ssize_t FileSystem::create()
     return -1;
 }
 
+//load node by inumber
+
 ssize_t FileSystem::load_node(size_t inumber, Inode *node)
 {
     int inode_block = inumber / INODES_PER_BLOCK + 1;
@@ -242,6 +245,7 @@ ssize_t FileSystem::load_node(size_t inumber, Inode *node)
     return size;
 }
 
+// save the inumber
 bool FileSystem::save_node(size_t inumber, Inode *node)
 {
     int inode_block = inumber / INODES_PER_BLOCK + 1;
@@ -394,6 +398,7 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
         if (node.Direct[off_block] == 0)
         {
             int new_free = this->get_free_block();
+            //没有空闲块的话将更改的块写回，然后返回
             if (new_free <= 0)
             {
                 node.Size += data_offset;
@@ -420,6 +425,7 @@ ssize_t FileSystem::write(size_t inumber, char *data, size_t length, size_t offs
         off_block++;
     }
     int indirect_off_block = off_block - 5;
+    //如果直接块不够，分配间接块，并写入数据
     if (length > 0)
     {
         if (node.Indirect == 0)
